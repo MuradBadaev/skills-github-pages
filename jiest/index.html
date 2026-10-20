@@ -1,0 +1,187 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta property="og:title" content="Бронь стола через Telegram — демо"><meta property="og:description" content="Гость бронирует стол или банкет, администратор подтверждает одной кнопкой">
+<title>Бронь-бот Жи Есть</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: two working screens side by side — guest's Telegram chat (left) and admin's booking list (right); stack on phones */
+:root{
+  --bg:#eef1f4; --panel:#ffffff; --ink:#18212b; --muted:#66727f; --line:#dfe4ea;
+  --chat:#d9e4ec; --in:#ffffff; --out:#dcf3c6; --accent:#2f8fd4; --accent-ink:#ffffff;
+  --ok:#2e9e5b; --ok-bg:#e3f4ea; --warn:#b7791f; --warn-bg:#fbf0dc; --bad:#c2453b; --bad-bg:#f9e3e1;
+  --banq:#7a4fc4; --banq-bg:#efe8fa;
+  --f-body:"Manrope",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#11161c; --panel:#1a212a; --ink:#e6ebf0; --muted:#8d99a6; --line:#2a333e;
+  --chat:#0f1a24; --in:#1f2a35; --out:#2b5278; --accent:#4ea4e6; --accent-ink:#0b1520;
+  --ok:#5cc489; --ok-bg:#183326; --warn:#e0a948; --warn-bg:#352a15; --bad:#ef7a70; --bad-bg:#3a1d1b;
+  --banq:#b392ef; --banq-bg:#2a2140; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11161c; --panel:#1a212a; --ink:#e6ebf0; --muted:#8d99a6; --line:#2a333e;
+  --chat:#0f1a24; --in:#1f2a35; --out:#2b5278; --accent:#4ea4e6; --accent-ink:#0b1520;
+  --ok:#5cc489; --ok-bg:#183326; --warn:#e0a948; --warn-bg:#352a15; --bad:#ef7a70; --bad-bg:#3a1d1b;
+  --banq:#b392ef; --banq-bg:#2a2140; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px 40px}
+.wrap{max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+header{display:flex;flex-wrap:wrap;align-items:end;justify-content:space-between;gap:12px}
+h1{margin:0;font-size:24px;font-weight:800;letter-spacing:-.01em;text-wrap:balance}
+.sub{color:var(--muted);margin:4px 0 0;max-width:60ch}
+.tag{font-family:var(--f-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+button{font:inherit;cursor:pointer}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.reset{background:transparent;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 14px;font-weight:600}
+.grid{display:grid;grid-template-columns:minmax(0,380px) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:820px){.grid{grid-template-columns:minmax(0,1fr)}}
+.col{display:flex;flex-direction:column;gap:8px;min-width:0}
+/* phone */
+.phone{background:var(--panel);border:1px solid var(--line);border-radius:22px;overflow:hidden;display:flex;flex-direction:column;height:620px;max-height:80vh}
+.tg-top{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.ava{width:38px;height:38px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-weight:800}
+.tg-top b{display:block;font-size:15px}
+.tg-top small{color:var(--muted);font-size:12px}
+.chat{flex:1;overflow-y:auto;background:var(--chat);padding:14px 12px;display:flex;flex-direction:column;gap:8px}
+.msg{max-width:84%;padding:8px 11px;border-radius:12px;white-space:pre-line;font-size:14px;animation:pop .18s ease-out}
+.msg.in{background:var(--in);align-self:flex-start;border-bottom-left-radius:4px}
+.msg.out{background:var(--out);align-self:flex-end;border-bottom-right-radius:4px}
+@keyframes pop{from{transform:translateY(4px);opacity:.4}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.msg{animation:none}}
+.kb{display:flex;flex-wrap:wrap;gap:6px;padding:10px;border-top:1px solid var(--line);background:var(--panel);min-height:58px}
+.kb button{flex:1 1 calc(50% - 6px);background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:9px 8px;font-weight:600;font-size:14px}
+.kb button:hover{border-color:var(--accent)}
+.kb .wide{flex-basis:100%}
+.kb .hint{color:var(--muted);font-size:13px;align-self:center;padding:0 4px}
+/* admin */
+.admin{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.ad-top{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--line)}
+.ad-top h2{margin:0;font-size:17px}
+.stats{display:flex;gap:16px;font-size:13px;color:var(--muted)}
+.stats b{color:var(--ink);font-variant-numeric:tabular-nums;font-size:16px;margin-right:4px}
+.list{display:flex;flex-direction:column}
+.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px 14px;padding:14px 16px;border-bottom:1px solid var(--line);align-items:center}
+.row:last-child{border-bottom:0}
+.row.new{background:color-mix(in srgb,var(--warn-bg) 55%,transparent)}
+.who{font-weight:700}
+.meta{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+.pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.pill{font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px}
+.p-new{background:var(--warn-bg);color:var(--warn)}
+.p-ok{background:var(--ok-bg);color:var(--ok)}
+.p-no{background:var(--bad-bg);color:var(--bad)}
+.p-banq{background:var(--banq-bg);color:var(--banq)}
+.p-ex{background:var(--bg);color:var(--muted)}
+.acts{display:flex;gap:6px}
+.acts button{border:0;border-radius:8px;padding:8px 12px;font-weight:700;font-size:13px}
+.b-ok{background:var(--ok);color:var(--panel)}
+.b-no{background:var(--bad-bg);color:var(--bad)}
+@media (max-width:460px){.row{grid-template-columns:minmax(0,1fr)}}
+.note{font-size:13px;color:var(--muted)}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="tag">Демо · пример для ресторана «Жи Есть»</div>
+      <h1>Бронь стола и банкетов через Telegram</h1>
+      <p class="sub">Слева — что видит гость. Справа — что видит администратор. Нажимайте кнопки в чате: заявка сразу появится у администратора.</p>
+    </div>
+    <button class="reset" id="reset" type="button">Начать заново</button>
+  </header>
+
+  <div class="grid">
+    <div class="col">
+      <div class="tag">Экран гостя</div>
+      <div class="phone">
+        <div class="tg-top"><div class="ava">Ж</div><div><b>Бронь · Жи Есть</b><small>бот</small></div></div>
+        <div class="chat" id="chat" aria-live="polite"></div>
+        <div class="kb" id="kb"></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="tag">Экран администратора</div>
+      <div class="admin">
+        <div class="ad-top">
+          <h2>Брони и заявки</h2>
+          <div class="stats"><span><b id="sNew">0</b>ждут ответа</span><span><b id="sOk">0</b>подтверждено</span><span><b id="sBanq">0</b>банкетов</span></div>
+        </div>
+        <div class="list" id="list"></div>
+      </div>
+      <p class="note">Уведомление о новой заявке приходит администратору в Telegram. Подтвердил одной кнопкой — гость сразу получает ответ, а за 2 часа до визита бот сам напоминает ему о брони.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+const chat=document.getElementById('chat'),kb=document.getElementById('kb'),list=document.getElementById('list');
+let book={},bookings=[],uid=0;
+const sample=()=>[
+  {id:++uid,kind:'table',name:'Пример: Магомед',phone:'+7 9•• •••-12-40',date:'Сегодня',time:'19:00',guests:'4',status:'ok',ex:true},
+  {id:++uid,kind:'banq',name:'Пример: Зарема',phone:'+7 9•• •••-77-05',date:'Сб, 14 ноября',event:'Свадьба',guests:'80–100',status:'new',ex:true}
+];
+function say(text,side='in'){const d=document.createElement('div');d.className='msg '+side;d.textContent=text;chat.appendChild(d);chat.scrollTop=chat.scrollHeight}
+function keys(opts){kb.innerHTML='';opts.forEach(o=>{const b=document.createElement('button');b.type='button';b.textContent=o.t;if(o.wide)b.className='wide';b.onclick=()=>{say(o.t,'out');kb.innerHTML='';setTimeout(o.go,350)};kb.appendChild(b)})}
+function hint(t){kb.innerHTML='<span class="hint"></span>';kb.firstChild.textContent=t}
+
+function start(){
+  book={};
+  say('Ассаламу алейкум! Я бот ресторана «Жи Есть». Помогу забронировать стол или оставить заявку на банкет.');
+  keys([{t:'Забронировать стол',go:tDate,wide:true},{t:'Банкет / свадьба',go:bType},{t:'Адрес',go:addr}]);
+}
+function addr(){say('Москва, ул. Орджоникидзе, 11 ст17.\nЗдесь будет ваш график работы и ссылка на карту.');keys([{t:'Забронировать стол',go:tDate,wide:true},{t:'Банкет / свадьба',go:bType}])}
+function tDate(){book={kind:'table'};say('На какой день?');keys(['Сегодня','Завтра','Пятница','Суббота'].map(d=>({t:d,go:()=>{book.date=d;tTime()}})))}
+function tTime(){say('Во сколько?');keys(['18:00','19:00','20:00','21:00'].map(t=>({t,go:()=>{book.time=t;tGuests()}})))}
+function tGuests(){say('Сколько будет гостей?');keys(['2','4','6','8 и больше'].map(g=>({t:g,go:()=>{book.guests=g;contact()}})))}
+function bType(){book={kind:'banq'};say('Какое мероприятие?');keys(['Свадьба','День рождения','Мавлид / семейный','Корпоратив'].map(e=>({t:e,go:()=>{book.event=e;bGuests()}})))}
+function bGuests(){say('Примерно сколько гостей?');keys(['20–50','50–80','80–100','100+'].map(g=>({t:g,go:()=>{book.guests=g;bDate()}})))}
+function bDate(){say('На какую дату?');keys(['В этом месяце','Через 1–2 месяца','Дата ещё не точная'].map(d=>({t:d,go:()=>{book.date=d;contact()}})))}
+function contact(){say('Оставьте имя и телефон — нажмите кнопку ниже, номер подставится из Telegram.');keys([{t:'📱 Отправить контакт',wide:true,go:()=>{book.name='Ахмед';book.phone='+7 9•• •••-31-18';say('Ахмед, +7 9•• •••-31-18','out');setTimeout(confirmStep,350)}}])}
+function confirmStep(){
+  const s=book.kind==='table'?`Стол: ${book.date}, ${book.time}, гостей: ${book.guests}`:`Банкет: ${book.event}, гостей: ${book.guests}, ${book.date.toLowerCase()}`;
+  say('Проверьте:\n'+s+'\nАхмед, +7 9•• •••-31-18');
+  keys([{t:'Всё верно, отправить',go:send,wide:true},{t:'Изменить',go:()=>{book.kind==='table'?tDate():bType()},wide:true}]);
+}
+function send(){
+  const b={...book,id:++uid,status:'new'};bookings.unshift(b);render(b.id);
+  say(b.kind==='table'?'Заявка отправлена администратору. Как только он подтвердит — я сразу напишу вам.':'Заявка на банкет отправлена. Администратор свяжется с вами, чтобы обсудить меню и зал.');
+  hint('Теперь нажмите «Подтвердить» справа, на экране администратора →');
+}
+function decide(id,ok){
+  const b=bookings.find(x=>x.id===id);b.status=ok?'ok':'no';render();
+  if(b.ex)return;
+  if(b.kind==='table'){
+    say(ok?`Бронь подтверждена ✅\n${b.date}, ${b.time}, гостей: ${b.guests}.\nЗа 2 часа до визита пришлю напоминание.`:'К сожалению, на это время мест нет. Выберите другое время:');
+    if(ok)setTimeout(()=>{say('Напоминание: сегодня в '+b.time+' вас ждёт стол на '+b.guests+' гостей. Если планы поменялись — нажмите «Отменить бронь».');keys([{t:'Буду',go:()=>{say('Ждём вас!');keys([{t:'В начало',go:start,wide:true}])}},{t:'Отменить бронь',go:()=>{b.status='no';render();say('Бронь отменена. Администратор уже в курсе.');keys([{t:'В начало',go:start,wide:true}])}}])},1400);
+    else tTime();
+  }else{
+    say(ok?'Администратор принял заявку на банкет и скоро позвонит или напишет вам.':'Администратор ответит вам в ближайшее время.');
+    keys([{t:'В начало',go:start,wide:true}]);
+  }
+}
+function render(flash){
+  list.innerHTML='';
+  bookings.forEach(b=>{
+    const r=document.createElement('div');r.className='row'+(b.status==='new'?' new':'');
+    const what=b.kind==='table'?`${b.date}, ${b.time} · гостей: ${b.guests}`:`${b.event} · гостей: ${b.guests} · ${b.date}`;
+    const st={new:['p-new','Ждёт ответа'],ok:['p-ok','Подтверждено'],no:['p-no','Отказ / отмена']}[b.status];
+    r.innerHTML=`<div><div class="who"></div><div class="meta"></div><div class="pills"><span class="pill ${st[0]}">${st[1]}</span>${b.kind==='banq'?'<span class="pill p-banq">Банкет</span>':''}${b.ex?'<span class="pill p-ex">пример</span>':''}</div></div>`;
+    r.querySelector('.who').textContent=b.name+' · '+b.phone;r.querySelector('.meta').textContent=what;
+    if(b.status==='new'){const a=document.createElement('div');a.className='acts';
+      const y=document.createElement('button');y.type='button';y.className='b-ok';y.textContent='Подтвердить';y.onclick=()=>decide(b.id,true);
+      const n=document.createElement('button');n.type='button';n.className='b-no';n.textContent='Отказать';n.onclick=()=>decide(b.id,false);
+      a.append(y,n);r.appendChild(a)}
+    list.appendChild(r);
+  });
+  document.getElementById('sNew').textContent=bookings.filter(b=>b.status==='new').length;
+  document.getElementById('sOk').textContent=bookings.filter(b=>b.status==='ok').length;
+  document.getElementById('sBanq').textContent=bookings.filter(b=>b.kind==='banq').length;
+}
+function reset(){chat.innerHTML='';uid=0;bookings=sample();render();start()}
+document.getElementById('reset').onclick=reset;
+reset();
+</script>
+</html>
